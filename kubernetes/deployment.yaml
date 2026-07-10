@@ -43,7 +43,10 @@ spec:
             - name: EXECUTION_MODE
               value: "production"
             - name: WEBHOOK_TOKEN
-              value: "prod-secret-token-change-me"
+              valueFrom:
+                secretKeyRef:
+                  name: infra-orchestrator-secrets
+                  key: webhook-token
             - name: WANDB_ENABLED
               value: "true"
             - name: WEAVE_ENABLED

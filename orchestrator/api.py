@@ -13,7 +13,16 @@ from fastapi import Response
 store = get_store()
 app = FastAPI(title="Paulo Lab SRE Orchestrator API")
 
+EXECUTION_MODE = os.getenv("EXECUTION_MODE", "development").lower()
 WEBHOOK_TOKEN = os.getenv("WEBHOOK_TOKEN", "dev-secret")
+
+if EXECUTION_MODE == "production" and (
+    not WEBHOOK_TOKEN 
+    or WEBHOOK_TOKEN == "dev-secret" 
+    or WEBHOOK_TOKEN == "prod-secret-token-change-me"
+):
+    raise RuntimeError("Insecure default WEBHOOK_TOKEN is forbidden in production execution mode.")
+
 
 
 def authenticate_token(x_webhook_token: str = Header(None)):
