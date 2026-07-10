@@ -437,6 +437,38 @@ async def run_evaluation() -> dict:
 
     results = await evaluation.evaluate(historian_app)
     print(f"\n[eval] Resultados da Avaliação: {results}")
+
+    # Check thresholds to fail CI if violated
+    import sys
+    scorer_results = results.get("historian_scorer", results)
+    
+    # Get accuracy
+    accuracy_data = scorer_results.get("accuracy", {})
+    accuracy = accuracy_data.get("mean") if isinstance(accuracy_data, dict) else accuracy_data
+    if accuracy is None:
+        accuracy = results.get("historian_scorer.accuracy.mean")
+
+    # Get false_positive_resolved
+    fp_data = scorer_results.get("false_positive_resolved", {})
+    fp_resolved = fp_data.get("mean") if isinstance(fp_data, dict) else fp_data
+    if fp_resolved is None:
+        fp_resolved = results.get("historian_scorer.false_positive_resolved.mean")
+
+    print(f"[eval] Verificando limites de qualidade CI/CD: accuracy={accuracy}, false_positive_resolved={fp_resolved}")
+
+    # Set thresholds
+    MIN_ACCURACY = 0.80
+    MAX_FP_RESOLVED = 0.05
+    
+    if accuracy is not None and accuracy < MIN_ACCURACY:
+        print(f"[eval] ERRO: Acurácia ({accuracy:.2f}) abaixo do limite mínimo de {MIN_ACCURACY:.2f}!")
+        sys.exit(1)
+        
+    if fp_resolved is not None and fp_resolved > MAX_FP_RESOLVED:
+        print(f"[eval] ERRO: Falsos positivos resolved ({fp_resolved:.2f}) acima do limite máximo de {MAX_FP_RESOLVED:.2f}!")
+        sys.exit(1)
+        
+    print("[eval] Avaliação passou nos critérios de qualidade CI/CD!")
     return results
 
 

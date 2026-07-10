@@ -1,5 +1,5 @@
 import hashlib
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -10,13 +10,13 @@ class IncidentPayload(BaseModel):
         ...,
         description="Inputs for fingerprint calculation (namespace, service_name, container_image, error_type)"
     )
-    proposed_action: str = Field(..., description="Action proposed: tweak_limits, liveness_probe_adjustment, rollback, code_fix")
-    manifest_path: str = Field(..., description="Local path to the Kubernetes manifest proposed for apply")
+    proposed_action: str = Field(..., description="Action proposed: tweak_limits, liveness_probe_adjustment, rollback")
+    manifest_path: Optional[str] = Field(None, description="Local path to the Kubernetes manifest proposed for apply")
     raw_payload: Dict[str, Any] = Field(default_factory=dict, description="Raw alert payload")
 
     @field_validator("proposed_action")
     def validate_action(cls, v):
-        allowed = {"tweak_limits", "liveness_probe_adjustment", "rollback", "code_fix"}
+        allowed = {"tweak_limits", "liveness_probe_adjustment", "rollback"}
         if v not in allowed:
             raise ValueError(f"proposed_action must be one of {allowed}")
         return v
@@ -41,18 +41,32 @@ class Evidence(BaseModel):
 
 
 class ProofContract(BaseModel):
+    incident_id: str
     incident_fingerprint: str
+    evidence_refs: Dict[str, str] = Field(default_factory=dict)
+    evidence_timestamps: Dict[str, str] = Field(default_factory=dict)
+    previous_state: Dict[str, Any] = Field(default_factory=dict)
+    competing_hypotheses: List[Dict[str, Any]] = Field(default_factory=list)
+    action_and_parameters: Dict[str, Any] = Field(default_factory=dict)
+    risk_level: str = "low"
+    preconditions: List[str] = Field(default_factory=list)
+    rollback_plan: str = "automatic_rollback"
+    expected_indicators: List[str] = Field(default_factory=list)
+    policy_version: str = "v1"
+    contract_hash: str = ""
+    expiration_timestamp: str = ""
     hypothesis: Hypothesis
     evidence: Evidence = Field(default_factory=Evidence)
 
 
 class HistorianResponse(BaseModel):
-    outcome: str = Field(..., description="resolved, reoccurred, caused_side_effect")
+    outcome: str = Field(..., description="resolved, reoccurred, caused_side_effect, inconclusive")
     observacao: str = Field(..., description="Context or notes about the classification decision")
+    reason: Optional[str] = Field(None, description="Sub-category for inconclusive outcome")
 
     @field_validator("outcome")
     def validate_outcome(cls, v):
-        allowed = {"resolved", "reoccurred", "caused_side_effect"}
+        allowed = {"resolved", "reoccurred", "caused_side_effect", "inconclusive"}
         if v not in allowed:
             raise ValueError(f"outcome must be one of {allowed}")
         return v

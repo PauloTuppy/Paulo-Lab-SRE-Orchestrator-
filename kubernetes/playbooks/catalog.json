@@ -1,0 +1,14 @@
+{
+  "tweak_limits_v1": {
+    "file": "tweak_limits_v1.yaml",
+    "hash": "ca57c456213856dc0b1c1cab13caaa76f335c3460720dec0b5523f0b7a53ba75"
+  },
+  "liveness_probe_adjustment_v1": {
+    "file": "liveness_probe_adjustment_v1.yaml",
+    "hash": "bdec3e8d170d4b0ec11390c4a8f05d510b1beee3ecda23707fac6327c3556be6"
+  },
+  "rollback_v1": {
+    "file": "rollback_v1.yaml",
+    "hash": "1d8258f0de843fb7f9db3535874128965560ad364cfb96c877851986e7bcc099"
+  }
+}

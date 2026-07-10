@@ -36,9 +36,6 @@ Retorne APENAS um JSON compacto:
 {"outcome": "...", "observacao": "..."}
 """.strip()
 
-# Gemini default credentials from user rules
-DEFAULT_GEMINI_KEY = "REMOVED_KEY"
-
 store = get_store()
 
 HISTORIAN_PROMPT_REF = "historian-agent-v2:v1"
@@ -204,10 +201,9 @@ def call_local_classifier(contract: dict, pod_status: dict, post_logs: str) -> d
         "observacao": "[Local Rule] Pod rodando sem reinícios ou erros aparentes nos logs."
     }
 
-
 def call_gemini_historian(user_payload: str) -> dict:
-    """Calls Gemini API using user-provided API key as second-tier fallback."""
-    api_key = os.getenv("GEMINI_API_KEY", DEFAULT_GEMINI_KEY)
+    """Calls Gemini API using user-provided API key."""
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("Chave de API do Gemini não configurada.")
         
@@ -338,17 +334,17 @@ def process_applied_incidents_once() -> int:
             outcome = classification.get("outcome", "reoccurred")
             observacao = classification.get("observacao", "")
 
-            # Write to history and mark pending incident as classified
-            store.insert_incident_history(
-                contract_dict["incident_fingerprint"],
-                row["proposed_action"],
-                outcome,
-                json.dumps(contract_dict),
-                observacao,
-                ts_applied,
-                model_name
+            # Write to history and mark pending incident as classified atomically
+            store.classify_and_record_incident(
+                incident_id=incident_id,
+                fingerprint=contract_dict["incident_fingerprint"],
+                action_type=row["proposed_action"],
+                outcome=outcome,
+                proof_contract_json=json.dumps(contract_dict),
+                decision_reason=observacao,
+                ts_applied=ts_applied,
+                historian_model=model_name
             )
-            store.update_incident_status(incident_id, status='classified')
             
             # Increment metrics counters
             increment_outcome(outcome)

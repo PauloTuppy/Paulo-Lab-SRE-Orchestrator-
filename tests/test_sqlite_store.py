@@ -29,8 +29,8 @@ def test_data_insertion_and_querying():
         # Insert a pending incident
         cursor.execute(
             """
-            INSERT INTO pending_incidents (incident_id, source, namespace, pod_name, proposed_action, manifest_path)
-            VALUES ('inc-test-1', 'test', 'default', 'pod-1', 'tweak_limits', '/manifest.yaml')
+            INSERT INTO pending_incidents (incident_id, source, namespace, pod_name, proposed_action, manifest_path, playbook_id, fingerprint, idempotency_key)
+            VALUES ('inc-test-1', 'test', 'default', 'pod-1', 'tweak_limits', '/manifest.yaml', 'tweak_limits_v1', 'fp-test-1', 'key-test-1')
             """
         )
         conn.commit()

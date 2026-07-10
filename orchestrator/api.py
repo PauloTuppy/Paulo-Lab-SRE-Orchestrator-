@@ -117,61 +117,12 @@ def normalize_incoming_payload(raw_json: Dict[str, Any]) -> List[IncidentPayload
     return normalized_list
 
 
-def is_fingerprint_active(fingerprint: str) -> bool:
-    """Checks if there is an active incident with the same fingerprint in 'pending' or 'applied' state."""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        # Find active incidents in pending_incidents.
-        # Since fingerprint is not saved directly, we fetch pending ones and check their calculated fingerprint.
-        # In a real database, we would have a fingerprint column. Let's make sure our check queries the database columns.
-        # Wait! Let's check how pending_incidents table is defined:
-        # pending_incidents (incident_id, source, namespace, pod_name, proposed_action, manifest_path, status, retry_count, ts_applied, created_at, error_message)
-        # Wait, if we want to query by fingerprint, how do we match it if pending_incidents doesn't store fingerprint directly?
-        # Ah! We should calculate the fingerprint using namespace, pod_name, and other parameters, or add fingerprint to pending_incidents?
-        # Wait, let's look at our pending_incidents.sql. It does not have fingerprint column. But wait, we can fetch the namespace, proposed_action, pod_name
-        # of rows with status in ('pending', 'applied') and calculate their fingerprints, OR we can simply fetch matching namespace and proposed_action.
-        # Wait! To make it robust and performant, let's check how the fingerprint is computed.
-        # fingerprint_inputs needs: namespace, service_name, container_image, error_type.
-        # Since we might not store all fingerprint inputs in pending_incidents (which only stores namespace, pod_name, proposed_action, manifest_path),
-        # how can we check if it is active?
-        # We can query pending_incidents for rows where status in ('pending', 'applied') and namespace = ? AND proposed_action = ?.
-        # Even better, we can query by namespace and pod_name!
-        # Let's check the SQL query:
-        cursor.execute(
-            """
-            SELECT namespace, pod_name, proposed_action
-            FROM pending_incidents
-            WHERE status IN ('pending', 'applied')
-            """
-        )
-        rows = cursor.fetchall()
-
-    for row in rows:
-        # We can approximate deduplication by matching namespace, pod_name and proposed_action
-        # Or if we have access to the inputs, we can check. Since we want a robust de-duplication,
-        # checking if namespace and pod_name have active remediations is a very safe heuristic!
-        if row["namespace"] == tag_fingerprint_input_namespace_match(fingerprint, row):
-            return True
-
-    return False
+def has_active_incident(fingerprint: str) -> bool:
+    """Checks if there is an active incident with the same fingerprint."""
+    return store.has_active_incident(fingerprint)
 
 
-def tag_fingerprint_input_namespace_match(target_fp: str, row: Any) -> str:
-    # Let's implement fingerprint checks properly.
-    # Actually, let's look at the worker code:
-    # it generates ProofContract where:
-    # "incident_fingerprint": incident_id
-    # Wait, in the worker.py from the user:
-    # "incident_fingerprint": incident_id,
-    # This means fingerprint was originally just mapped to incident_id!
-    # But wait, the user's updated guidelines say:
-    # "normalize tudo para um schema interno único (source, incident_id, fingerprint_inputs, proposed_action, manifest_ref, raw_payload)..."
-    # "o webhook e o worker precisam de idempotência... eventos repetidos não podem duplicar execução de remediação. Se houver um incidente ativo com o mesmo fingerprint em pending ou applied, descartar ou ignorar"
-def has_active_incident(namespace: str, pod_name: str) -> bool:
-    return store.has_active_incident(namespace, pod_name)
-
-
-@app.post("/webhook", dependencies=[Header(None)])
+@app.post("/webhook")
 async def receive_webhook(request: Request, x_webhook_token: str = Header(None)):
     # Authenticate token
     authenticate_token(x_webhook_token)
@@ -196,20 +147,53 @@ async def receive_webhook(request: Request, x_webhook_token: str = Header(None))
     for inc in incidents:
         namespace = inc.fingerprint_inputs.get("namespace", "default")
         pod_name = inc.fingerprint_inputs.get("pod_name", inc.incident_id)
+        
+        # Calculate fingerprint
+        fingerprint = generate_fingerprint(inc.fingerprint_inputs)
 
         # Idempotency / De-duplication check
-        if has_active_incident(namespace, pod_name):
-            ignored_duplicates.append(inc.incident_id)
+        if has_active_incident(fingerprint):
+            active_row = store.get_active_incident_by_fingerprint(fingerprint)
+            if active_row:
+                # Compare incident version
+                new_version = inc.raw_payload.get("version", 1)
+                # Re-open or update if new version is higher, or if already applied but re-occurred
+                if (
+                    new_version > active_row["incident_version"] or
+                    active_row["status"] == "applied"
+                ):
+                    import json
+                    store.update_active_incident(
+                        fingerprint=fingerprint,
+                        incident_version=new_version,
+                        idempotency_key=inc.incident_id,
+                        playbook_parameters_json=json.dumps(inc.fingerprint_inputs)
+                    )
+                    processed_ids.append(inc.incident_id)
+                else:
+                    ignored_duplicates.append(inc.incident_id)
+            else:
+                ignored_duplicates.append(inc.incident_id)
             continue
 
         # Insert into pending_incidents
+        import json
+        playbook_id = f"{inc.proposed_action}_v1"
+        playbook_parameters_json = json.dumps(inc.fingerprint_inputs)
+        incident_version = inc.raw_payload.get("version", 1)
+        idempotency_key = inc.incident_id
+
         store.insert_pending_incident(
-            inc.incident_id,
-            inc.source,
-            namespace,
-            pod_name,
-            inc.proposed_action,
-            inc.manifest_path
+            incident_id=inc.incident_id,
+            source=inc.source,
+            namespace=namespace,
+            pod_name=pod_name,
+            proposed_action=inc.proposed_action,
+            playbook_id=playbook_id,
+            playbook_parameters_json=playbook_parameters_json,
+            fingerprint=fingerprint,
+            incident_version=incident_version,
+            idempotency_key=idempotency_key
         )
         processed_ids.append(inc.incident_id)
 

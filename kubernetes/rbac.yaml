@@ -1,13 +1,19 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: infra-orchestrator-sa
+  name: infra-orchestrator-api-sa
+  namespace: sre-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: infra-orchestrator-worker-sa
   namespace: sre-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: infra-orchestrator-role
+  name: infra-orchestrator-worker-role
   namespace: sre-system
 rules:
   - apiGroups: [""]
@@ -17,19 +23,19 @@ rules:
     resources: ["deployments", "statefulsets"]
     verbs: ["get", "list", "watch", "patch", "update"]
   - apiGroups: [""]
-    resources: ["configmaps", "secrets"]
+    resources: ["configmaps"]
     verbs: ["get", "list", "watch", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: infra-orchestrator-rb
+  name: infra-orchestrator-worker-rb
   namespace: sre-system
 subjects:
   - kind: ServiceAccount
-    name: infra-orchestrator-sa
+    name: infra-orchestrator-worker-sa
     namespace: sre-system
 roleRef:
   kind: Role
-  name: infra-orchestrator-role
+  name: infra-orchestrator-worker-role
   apiGroup: rbac.authorization.k8s.io

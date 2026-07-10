@@ -111,9 +111,9 @@ def test_process_applied_incidents(monkeypatch, tmp_path):
         cursor.execute(
             """
             INSERT INTO pending_incidents (
-                incident_id, source, namespace, pod_name, proposed_action, manifest_path, status, ts_applied
+                incident_id, source, namespace, pod_name, proposed_action, manifest_path, status, ts_applied, playbook_id, fingerprint, idempotency_key
             )
-            VALUES ('inc-applied-1', 'alertmanager', 'sre-system', 'app-pod-123', 'tweak_limits', 'manifest.yaml', 'applied', datetime('now', '-10 seconds'))
+            VALUES ('inc-applied-1', 'alertmanager', 'sre-system', 'app-pod-123', 'tweak_limits', 'manifest.yaml', 'applied', datetime('now', '-10 seconds'), 'tweak_limits_v1', 'fp-applied-1', 'key-applied-1')
             """
         )
         conn.commit()
