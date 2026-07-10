@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infra-orchestrator
+  namespace: sre-system
+  labels:
+    app: infra-orchestrator
+spec:
+  replicas: 1  # SQLite RWO storage requires a single pod instance to prevent concurrent lock issues
+  selector:
+    matchLabels:
+      app: infra-orchestrator
+  template:
+    metadata:
+      labels:
+        app: infra-orchestrator
+    spec:
+      serviceAccountName: infra-orchestrator-sa
+      containers:
+        # Container 1: FastAPI Webhook server using Gunicorn + Uvicorn workers
+        - name: orchestrator-api
+          image: registry.example.com/infra-orchestrator:latest
+          command: ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "orchestrator.api:app", "--bind", "0.0.0.0:8000"]
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: DB_PATH
+              value: /var/lib/incident-db/incident_history.sqlite3
+            - name: EXECUTION_MODE
+              value: "production"
+            - name: WEBHOOK_TOKEN
+              value: "prod-secret-token-change-me"
+            - name: WANDB_ENABLED
+              value: "true"
+            - name: WEAVE_ENABLED
+              value: "true"
+            - name: WANDB_PROJECT
+              value: "paulo-lab-sre-orchestrator"
+          volumeMounts:
+            - name: incident-db
+              mountPath: /var/lib/incident-db
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+        # Container 2: SRE Worker loop and Historian daemon
+        - name: orchestrator-worker
+          image: registry.example.com/infra-orchestrator:latest
+          command: ["python", "-m", "orchestrator.worker"]
+          env:
+            - name: DB_PATH
+              value: /var/lib/incident-db/incident_history.sqlite3
+            - name: EXECUTION_MODE
+              value: "production"
+            - name: ORCHESTRATOR_ENABLED
+              value: "true"
+            - name: WANDB_ENABLED
+              value: "true"
+            - name: WEAVE_ENABLED
+              value: "true"
+            - name: WANDB_PROJECT
+              value: "paulo-lab-sre-orchestrator"
+            - name: HISTORIAN_ENDPOINT
+              value: "https://seu-endpoint-interno/historian"
+            - name: HISTORIAN_DELAY_SEC
+              value: "900"  # 15 minutes window
+          volumeMounts:
+            - name: incident-db
+              mountPath: /var/lib/incident-db
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+      volumes:
+        - name: incident-db
+          persistentVolumeClaim:
+            claimName: incident-db-pvc

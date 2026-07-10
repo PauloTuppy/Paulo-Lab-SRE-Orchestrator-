@@ -1,0 +1,32 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sre-orchestrator-alerts
+  namespace: sre-system
+  labels:
+    role: alert-rules
+spec:
+  groups:
+    - name: sre-orchestrator-historian
+      rules:
+        # Alerta para viés de otimismo (se a taxa de incidentes resolvidos for > 80% em 10 minutos)
+        - alert: HistorianOptimismBias
+          expr: sum(rate(sre_historian_outcome_total{outcome="resolved"}[10m])) / sum(rate(sre_historian_outcome_total[10m])) > 0.80
+          for: 10m
+          labels:
+            severity: warning
+            tier: sre-governance
+          annotations:
+            summary: "Viés de Otimismo detectado no SRE Historian"
+            description: "O Historian está classificando mais de 80% dos incidentes como resolvidos ('resolved') nos últimos 10 minutos. Isso pode indicar falso sucesso ou reward hacking."
+
+        # Alerta para taxa de output inválido (se a taxa de outputs inválidos for > 5% em 2 minutos)
+        - alert: HistorianInvalidOutputRate
+          expr: sum(rate(sre_historian_outcome_total{outcome="invalid"}[2m])) / sum(rate(sre_historian_outcome_total[2m])) > 0.05
+          for: 2m
+          labels:
+            severity: critical
+            tier: sre-governance
+          annotations:
+            summary: "Taxa elevada de outputs inválidos do Historian"
+            description: "O Historian obteve outputs que falharam na validação de schema em mais de 5% das tentativas nos últimos 2 minutos. Verifique o LLM fallback e status de rede."

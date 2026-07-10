@@ -1,0 +1,17 @@
+# Local environment and secrets
+.env
+*.env
+config/secrets.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+ENV/
+
+# Database files
+*.sqlite3
+*.db
